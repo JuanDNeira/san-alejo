@@ -1,84 +1,88 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import React, { useState } from 'react';
+import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontFamily, FontSize } from '../theme';
-import type { TabParamList } from './types';
 
-// Screens
 import HomeScreen from '../screens/HomeScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 
-const Tab = createBottomTabNavigator<TabParamList>();
+type TabName = 'Home' | 'Dashboard';
 
-type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
-
-const TAB_ICONS: Record<keyof TabParamList, { active: IoniconName; inactive: IoniconName }> = {
-  Home: { active: 'cube', inactive: 'cube-outline' },
-  Dashboard: { active: 'bar-chart', inactive: 'bar-chart-outline' },
-};
-
-const TAB_LABELS: Record<keyof TabParamList, string> = {
-  Home: 'Inicio',
-  Dashboard: 'Panel',
-};
+const TABS: { name: TabName; label: string; icon: string; iconActive: string }[] = [
+  { name: 'Home', label: 'Inicio', icon: 'cube-outline', iconActive: 'cube' },
+  { name: 'Dashboard', label: 'Panel', icon: 'bar-chart-outline', iconActive: 'bar-chart' },
+];
 
 export default function TabNavigator() {
+  const [activeTab, setActiveTab] = useState<TabName>('Home');
   const insets = useSafeAreaInsets();
-  const tabBarHeight = 60 + insets.bottom;
 
   return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarShowLabel: true,
-        tabBarStyle: {
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: tabBarHeight,
-          backgroundColor: Colors.backgroundSecondary,
-          borderTopWidth: 1,
-          borderTopColor: Colors.border,
-          paddingBottom: insets.bottom,
-          paddingTop: Spacing[2],
-          elevation: 16,
-        },
-        tabBarBackground: () => (
-            <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: Colors.backgroundSecondary }]}
-            />
-          ),
-        tabBarIcon: ({ focused, color }) => {
-          const icons = TAB_ICONS[route.name as keyof TabParamList];
+    <View style={styles.container}>
+      {/* Contenido */}
+      <View style={styles.content}>
+        {activeTab === 'Home' && <HomeScreen />}
+        {activeTab === 'Dashboard' && <DashboardScreen />}
+      </View>
+
+      {/* Tab Bar manual */}
+      <View style={[styles.tabBar, { paddingBottom: insets.bottom || Spacing[2] }]}>
+        {TABS.map((tab) => {
+          const focused = activeTab === tab.name;
           return (
-            <View style={focused ? styles.activeIconContainer : undefined}>
-              <Ionicons
-                name={focused ? icons.active : icons.inactive}
-                size={22}
-                color={color}
-              />
-            </View>
+            <TouchableOpacity
+              key={tab.name}
+              style={styles.tabItem}
+              onPress={() => setActiveTab(tab.name)}
+              activeOpacity={0.7}
+            >
+              <View style={focused ? styles.activeIcon : styles.inactiveIcon}>
+                <Ionicons
+                  name={(focused ? tab.iconActive : tab.icon) as React.ComponentProps<typeof Ionicons>['name']}
+                  size={22}
+                  color={focused ? Colors.primary : Colors.textTertiary}
+                />
+              </View>
+              <Text style={[styles.tabLabel, { color: focused ? Colors.primary : Colors.textTertiary }]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
           );
-        },
-        tabBarLabel: TAB_LABELS[route.name as keyof TabParamList],
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textTertiary,
-        tabBarLabelStyle: styles.tabLabel,
-      })}
-    >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-    </Tab.Navigator>
+        })}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  activeIconContainer: {
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  content: {
+    flex: 1,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: Colors.backgroundSecondary,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    paddingTop: Spacing[2],
+    elevation: 8,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing[1],
+  },
+  activeIcon: {
     backgroundColor: Colors.primaryGlow,
     borderRadius: 10,
+    padding: 4,
+  },
+  inactiveIcon: {
     padding: 4,
   },
   tabLabel: {

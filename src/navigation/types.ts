@@ -13,29 +13,16 @@ export type TabParamList = {
 
 // ─── Stack principal ──────────────────────────────────────────────────────────
 export type RootStackParamList = {
-  // Tabs
-  MainTabs: NavigatorScreenParams<TabParamList>;
-
-  // Búsqueda (accesible desde cualquier pantalla)
+  MainTabs: undefined;
   Search: undefined;
-
-  // Detalle de contenedor
   ContainerDetail: { containerId: string };
-
-  // Sub-contenedor (navegación anidada)
   SubContainerDetail: { containerId: string; parentName: string };
-
-  // Formularios
   CreateContainer: { parentContainerId?: string; locationId?: string };
   EditContainer: { containerId: string };
   CreateItem: { containerId: string };
   EditItem: { itemId: string; containerId: string };
-
-  // Gestión
   Locations: undefined;
   Tags: undefined;
-
-  // Configuración
   Settings: undefined;
 };
 
