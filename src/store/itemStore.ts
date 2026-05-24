@@ -14,6 +14,7 @@ interface ItemState {
   updateItem: (id: string, containerId: string, data: UpdateItemInput) => Promise<void>;
   deleteItem: (id: string, containerId: string) => Promise<void>;
   moveItem: (id: string, fromContainerId: string, toContainerId: string) => Promise<void>;
+  toggleFavorite: (id: string, containerId: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -122,6 +123,26 @@ export const useItemStore = create<ItemState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Error al mover ítem' });
       throw err;
+    }
+  },
+
+  toggleFavorite: async (id: string, containerId: string) => {
+    try {
+      await ItemRepository.toggleFavorite(id);
+      const updated = await ItemRepository.findById(id);
+      if (updated) {
+        set((state) => {
+          const existing = state.itemsByContainer[containerId] ?? [];
+          return {
+            itemsByContainer: {
+              ...state.itemsByContainer,
+              [containerId]: existing.map((i) => (i.id === id ? updated : i)),
+            },
+          };
+        });
+      }
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Error al actualizar favorito' });
     }
   },
 

@@ -128,6 +128,8 @@ export function PremiumInput({
             multiline={multiline}
             numberOfLines={multiline ? numberOfLines : undefined}
             textAlignVertical={multiline ? 'top' : 'center'}
+            accessibilityLabel={label}
+            accessibilityHint={error ?? hint}
             {...rest}
           />
         </View>
@@ -137,6 +139,8 @@ export function PremiumInput({
             style={styles.rightIcon}
             onPress={onRightIconPress}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Acción del campo"
           >
             <Ionicons name={rightIcon} size={18} color={Colors.textTertiary} />
           </TouchableOpacity>
@@ -146,7 +150,7 @@ export function PremiumInput({
       {error ? (
         <View style={styles.errorRow}>
           <Ionicons name="alert-circle-outline" size={12} color={Colors.error} />
-          <Text variant="caption" color={Colors.error} style={styles.errorText}>
+          <Text variant="caption" color={Colors.error} style={styles.errorText} accessibilityRole="alert">
             {error}
           </Text>
         </View>

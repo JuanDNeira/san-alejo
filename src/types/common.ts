@@ -24,7 +24,7 @@ export const CONTAINER_TYPE_LABELS: ContainerTypeLabel = {
 export const CONTAINER_TYPE_ICONS: Record<ContainerType, string> = {
   box: 'cube-outline',
   suitcase: 'briefcase-outline',
-  drawer: 'filing-outline',
+  drawer: 'albums-outline',
   shelf: 'layers-outline',
   bag: 'bag-outline',
   other: 'ellipsis-horizontal-outline',

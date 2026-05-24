@@ -1,13 +1,20 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Animated, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Animated,
+  TouchableOpacity,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, StatCard, SectionHeader } from '../components/ui';
+import * as Haptics from 'expo-haptics';
+import { Text, StatCard, SectionHeader, SkeletonStatCard, EmptyState } from '../components/ui';
 import { Colors, Spacing, BorderRadius, Shadows, FontFamily, FontSize } from '../theme';
 import { ContainerRepository } from '../database/repositories/ContainerRepository';
 import { ItemRepository } from '../database/repositories/ItemRepository';
-import { useAppNavigation } from '../navigation/RootNavigator';
+import { useAppNavigation } from '../navigation/NavigationContext';
 import type { ContainerType } from '../types/common';
 import { CONTAINER_TYPE_LABELS, CONTAINER_TYPE_ICONS } from '../types/common';
 
@@ -15,7 +22,10 @@ interface DashboardStats {
   totalContainers: number;
   totalItems: number;
   byType: Partial<Record<ContainerType, number>>;
-  topContainers: { container: { id: string; name: string; color_tag?: string; type: ContainerType }; count: number }[];
+  topContainers: {
+    container: { id: string; name: string; color_tag?: string; type: ContainerType };
+    count: number;
+  }[];
 }
 
 const TYPE_COLORS: Partial<Record<ContainerType, string>> = {
@@ -27,21 +37,102 @@ const TYPE_COLORS: Partial<Record<ContainerType, string>> = {
   other: Colors.textTertiary,
 };
 
+// ─── Animated progress bar ────────────────────────────────────────────────────
+function AnimatedBar({
+  pct,
+  color,
+  delay = 0,
+}: {
+  pct: number;
+  color: string;
+  delay?: number;
+}) {
+  const widthAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(widthAnim, {
+      toValue: pct,
+      duration: 700,
+      delay,
+      useNativeDriver: false,
+    }).start();
+  }, [pct, delay, widthAnim]);
+
+  const animatedWidth = widthAnim.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
+
+  return (
+    <View style={barStyles.track}>
+      <Animated.View style={[barStyles.fill, { width: animatedWidth, backgroundColor: color }]} />
+    </View>
+  );
+}
+
+const barStyles = StyleSheet.create({
+  track: {
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: BorderRadius.full,
+    overflow: 'hidden',
+    marginTop: Spacing[2],
+  },
+  fill: {
+    height: '100%',
+    borderRadius: BorderRadius.full,
+  },
+});
+
+// ─── Animated counter ─────────────────────────────────────────────────────────
+function AnimatedCounter({ value, color }: { value: number; color: string }) {
+  const countAnim = useRef(new Animated.Value(0)).current;
+  const [display, setDisplay] = useState(0);
+
+  useEffect(() => {
+    countAnim.setValue(0);
+    const animation = Animated.timing(countAnim, {
+      toValue: value,
+      duration: 800,
+      useNativeDriver: false,
+    });
+    animation.start();
+    const id = countAnim.addListener(({ value: v }) => setDisplay(Math.round(v)));
+    return () => {
+      animation.stop();
+      countAnim.removeListener(id);
+    };
+  }, [value, countAnim]);
+
+  return (
+    <Text variant="headingMedium" color={color}>
+      {display}
+    </Text>
+  );
+}
+
+// ─── DashboardScreen ──────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const { navigate } = useAppNavigation();
   const insets = useSafeAreaInsets();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  const contentFade = useRef(new Animated.Value(0)).current;
+  const contentSlide = useRef(new Animated.Value(16)).current;
+  const refreshRotate = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  async function loadStats() {
+  const loadStats = useCallback(async () => {
     setIsLoading(true);
+    contentFade.setValue(0);
+    contentSlide.setValue(16);
+
+    // Spin refresh icon
+    const spinLoop = Animated.loop(
+      Animated.timing(refreshRotate, { toValue: 1, duration: 600, useNativeDriver: true })
+    );
+    spinLoop.start();
+
     try {
       const [containers, totalItems, byType, topContainers] = await Promise.all([
         ContainerRepository.findAll(),
@@ -64,17 +155,37 @@ export default function DashboardScreen() {
         })),
       });
       Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+        Animated.timing(contentFade, { toValue: 1, duration: 450, useNativeDriver: true }),
+        Animated.timing(contentSlide, { toValue: 0, duration: 450, useNativeDriver: true }),
       ]).start();
     } catch {
       // silencioso
     } finally {
       setIsLoading(false);
+      spinLoop.stop();
+      refreshRotate.setValue(0);
     }
-  }
+  }, [contentFade, contentSlide, refreshRotate]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const handleRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    loadStats();
+  }, [loadStats]);
+
+  const spin = refreshRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   const totalTypes = stats ? Object.keys(stats.byType).length : 0;
+  const avg =
+    stats && stats.totalContainers > 0
+      ? (stats.totalItems / stats.totalContainers).toFixed(1)
+      : '0';
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -86,155 +197,227 @@ export default function DashboardScreen() {
           </Text>
           <Text variant="headingLarge" color={Colors.textPrimary}>Panel</Text>
         </View>
-        <TouchableOpacity style={styles.refreshButton} onPress={loadStats} activeOpacity={0.7}>
-          <Ionicons name="refresh-outline" size={18} color={Colors.textSecondary} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Actualizar estadísticas"
+          >
+            <Animated.View style={{ transform: [{ rotate: spin }] }}>
+              <Ionicons name="refresh-outline" size={18} color={Colors.textSecondary} />
+            </Animated.View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.refreshButton, styles.settingsButton]}
+            onPress={() => navigate('Settings')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Configuración"
+          >
+            <Ionicons name="settings-outline" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <Animated.ScrollView
+      <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        scrollEventThrottle={16}
       >
-        {/* Main metrics */}
-        <View style={styles.metricsRow}>
-          <StatCard
-            label="Contenedores"
-            value={stats?.totalContainers ?? 0}
-            icon="cube"
-            gradient={Colors.gradients.primary}
-            subtitle={`${totalTypes} tipos`}
-          />
-          <View style={styles.metricGap} />
-          <StatCard
-            label="Ítems totales"
-            value={stats?.totalItems ?? 0}
-            icon="pricetag"
-            gradient={Colors.gradients.accent}
-            subtitle="unidades"
-          />
-        </View>
-
-        {/* Average items per container */}
-        {stats && stats.totalContainers > 0 && (
-          <View style={styles.avgCard}>
-            <LinearGradient
-              colors={[Colors.backgroundSecondary, Colors.backgroundTertiary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.avgGradient}
-            >
-              <View style={styles.avgLeft}>
-                <Ionicons name="analytics-outline" size={22} color={Colors.primary} />
-                <View style={styles.avgText}>
-                  <Text variant="labelMedium" color={Colors.textSecondary}>Promedio por contenedor</Text>
-                  <Text variant="caption" color={Colors.textTertiary}>ítems / contenedor</Text>
-                </View>
-              </View>
-              <Text variant="headingMedium" color={Colors.primary}>
-                {(stats.totalItems / stats.totalContainers).toFixed(1)}
-              </Text>
-            </LinearGradient>
+        {/* Skeleton */}
+        {isLoading && !stats && (
+          <View style={styles.skeletonRow}>
+            <SkeletonStatCard />
+            <View style={styles.metricGap} />
+            <SkeletonStatCard />
           </View>
         )}
 
-        {/* By type */}
-        {stats && Object.keys(stats.byType).length > 0 && (
-          <>
-            <SectionHeader title="Distribución por tipo" accent={Colors.primary} style={styles.sectionHeader} />
-            <View style={styles.typeGrid}>
-              {(Object.entries(stats.byType) as [ContainerType, number][]).map(([type, count]) => {
-                const color = TYPE_COLORS[type] ?? Colors.primary;
-                const iconName = CONTAINER_TYPE_ICONS[type] as React.ComponentProps<typeof Ionicons>['name'];
-                const pct = stats.totalContainers > 0 ? (count / stats.totalContainers) * 100 : 0;
-                return (
-                  <View key={type} style={styles.typeCard}>
-                    <View style={[styles.typeIconWrapper, { backgroundColor: `${color}22` }]}>
-                      <Ionicons name={iconName} size={18} color={color} />
+        {/* Animated content */}
+        {stats && (
+          <Animated.View
+            style={{ opacity: contentFade, transform: [{ translateY: contentSlide }] }}
+          >
+            {/* Main metrics */}
+            <View style={styles.metricsRow}>
+              <StatCard
+                label="Contenedores"
+                value={stats.totalContainers}
+                icon="cube"
+                gradient={Colors.gradients.primary}
+                subtitle={`${totalTypes} tipo${totalTypes !== 1 ? 's' : ''}`}
+              />
+              <View style={styles.metricGap} />
+              <StatCard
+                label="Ítems totales"
+                value={stats.totalItems}
+                icon="pricetag"
+                gradient={Colors.gradients.accent}
+                subtitle="unidades"
+              />
+            </View>
+
+            {/* Average card */}
+            {stats.totalContainers > 0 && (
+              <View style={styles.avgCard}>
+                <LinearGradient
+                  colors={[Colors.backgroundSecondary, Colors.backgroundTertiary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.avgGradient}
+                >
+                  <View style={styles.avgLeft}>
+                    <View style={styles.avgIconWrapper}>
+                      <Ionicons name="analytics-outline" size={20} color={Colors.primary} />
                     </View>
-                    <Text variant="headingSmall" color={Colors.textPrimary} style={styles.typeCount}>
-                      {count}
-                    </Text>
-                    <Text variant="caption" color={Colors.textTertiary}>
-                      {CONTAINER_TYPE_LABELS[type]}
-                    </Text>
-                    {/* Mini bar */}
-                    <View style={styles.typeBar}>
-                      <View style={[styles.typeBarFill, { width: `${pct}%`, backgroundColor: color }]} />
+                    <View style={styles.avgText}>
+                      <Text variant="labelMedium" color={Colors.textSecondary}>
+                        Promedio por contenedor
+                      </Text>
+                      <Text variant="caption" color={Colors.textTertiary}>
+                        ítems / contenedor
+                      </Text>
                     </View>
                   </View>
-                );
-              })}
-            </View>
-          </>
-        )}
+                  <Text variant="headingMedium" color={Colors.primary}>{avg}</Text>
+                </LinearGradient>
+              </View>
+            )}
 
-        {/* Top containers */}
-        {stats && stats.topContainers.length > 0 && (
-          <>
-            <SectionHeader title="Más llenos" accent={Colors.accent} style={styles.sectionHeader} />
-            <View style={styles.topList}>
-              {stats.topContainers.map(({ container, count }, index) => {
-                const color = container.color_tag ?? Colors.primary;
-                const iconName = CONTAINER_TYPE_ICONS[container.type] as React.ComponentProps<typeof Ionicons>['name'];
-                const maxCount = stats.topContainers[0]?.count ?? 1;
-                const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
-                return (
-                  <TouchableOpacity
-                    key={container.id}
-                    style={styles.topItem}
-                    onPress={() => navigate('ContainerDetail', { containerId: container.id })}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.topRank}>
-                      <Text style={[styles.rankText, index === 0 && styles.rankFirst]}>
-                        #{index + 1}
-                      </Text>
-                    </View>
-                    <View style={[styles.topIconWrapper, { backgroundColor: `${color}22` }]}>
-                      <Ionicons name={iconName} size={16} color={color} />
-                    </View>
-                    <View style={styles.topInfo}>
-                      <Text variant="labelLarge" color={Colors.textPrimary} numberOfLines={1}>
-                        {container.name}
-                      </Text>
-                      <View style={styles.topBarWrapper}>
-                        <View style={styles.topBarBg}>
-                          <Animated.View
-                            style={[styles.topBarFill, { width: `${pct}%`, backgroundColor: color }]}
-                          />
+            {/* By type */}
+            {Object.keys(stats.byType).length > 0 && (
+              <>
+                <SectionHeader
+                  title="Distribución por tipo"
+                  accent={Colors.primary}
+                  style={styles.sectionHeader}
+                />
+                <View style={styles.typeGrid}>
+                  {(Object.entries(stats.byType) as [ContainerType, number][]).map(
+                    ([type, count], i) => {
+                      const color = TYPE_COLORS[type] ?? Colors.primary;
+                      const iconName = CONTAINER_TYPE_ICONS[type] as React.ComponentProps<
+                        typeof Ionicons
+                      >['name'];
+                      const pct =
+                        stats.totalContainers > 0
+                          ? (count / stats.totalContainers) * 100
+                          : 0;
+                      return (
+                        <View key={type} style={styles.typeCard}>
+                          <View
+                            style={[
+                              styles.typeIconWrapper,
+                              { backgroundColor: `${color}22` },
+                            ]}
+                          >
+                            <Ionicons name={iconName} size={18} color={color} />
+                          </View>
+                          <AnimatedCounter value={count} color={Colors.textPrimary} />
+                          <Text variant="caption" color={Colors.textTertiary}>
+                            {CONTAINER_TYPE_LABELS[type]}
+                          </Text>
+                          <AnimatedBar pct={pct} color={color} delay={i * 80} />
                         </View>
-                      </View>
-                    </View>
-                    <View style={[styles.topCountBadge, { backgroundColor: `${color}22`, borderColor: `${color}44` }]}>
-                      <Text style={[styles.topCountText, { color }]}>{count}</Text>
-                      <Text style={styles.topCountUnit}>ítems</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
-        )}
+                      );
+                    }
+                  )}
+                </View>
+              </>
+            )}
 
-        {/* Empty state */}
-        {!isLoading && stats?.totalContainers === 0 && (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconWrapper}>
-              <Ionicons name="bar-chart-outline" size={40} color={Colors.textTertiary} />
-            </View>
-            <Text variant="headingSmall" color={Colors.textSecondary} align="center" style={styles.emptyTitle}>
-              Sin datos aún
-            </Text>
-            <Text variant="bodyMedium" color={Colors.textTertiary} align="center">
-              Agrega contenedores para ver estadísticas aquí
-            </Text>
-          </View>
+            {/* Top containers */}
+            {stats.topContainers.length > 0 && (
+              <>
+                <SectionHeader
+                  title="Más llenos"
+                  accent={Colors.accent}
+                  style={styles.sectionHeader}
+                />
+                <View style={styles.topList}>
+                  {stats.topContainers.map(({ container, count }, index) => {
+                    const color = container.color_tag ?? Colors.primary;
+                    const iconName = CONTAINER_TYPE_ICONS[
+                      container.type
+                    ] as React.ComponentProps<typeof Ionicons>['name'];
+                    const maxCount = stats.topContainers[0]?.count ?? 1;
+                    const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
+
+                    return (
+                      <TouchableOpacity
+                        key={container.id}
+                        style={styles.topItem}
+                        onPress={() =>
+                          navigate('ContainerDetail', { containerId: container.id })
+                        }
+                        activeOpacity={0.75}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${container.name}, ${count} ítems`}
+                      >
+                        <View style={styles.topRank}>
+                          <Text
+                            style={[
+                              styles.rankText,
+                              index === 0 && styles.rankFirst,
+                              index === 1 && styles.rankSecond,
+                              index === 2 && styles.rankThird,
+                            ]}
+                          >
+                            #{index + 1}
+                          </Text>
+                        </View>
+                        <View
+                          style={[
+                            styles.topIconWrapper,
+                            { backgroundColor: `${color}22` },
+                          ]}
+                        >
+                          <Ionicons name={iconName} size={16} color={color} />
+                        </View>
+                        <View style={styles.topInfo}>
+                          <Text
+                            variant="labelLarge"
+                            color={Colors.textPrimary}
+                            numberOfLines={1}
+                          >
+                            {container.name}
+                          </Text>
+                          <AnimatedBar pct={pct} color={color} delay={index * 100} />
+                        </View>
+                        <View
+                          style={[
+                            styles.topCountBadge,
+                            {
+                              backgroundColor: `${color}22`,
+                              borderColor: `${color}44`,
+                            },
+                          ]}
+                        >
+                          <Text style={[styles.topCountText, { color }]}>{count}</Text>
+                          <Text style={styles.topCountUnit}>ítems</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* Empty state */}
+            {stats.totalContainers === 0 && (
+              <EmptyState
+                icon="bar-chart-outline"
+                title="Sin datos aún"
+                description="Agrega contenedores para ver estadísticas aquí."
+              />
+            )}
+          </Animated.View>
         )}
 
         <View style={styles.bottomSpacer} />
-      </Animated.ScrollView>
+      </ScrollView>
     </View>
   );
 }
@@ -256,6 +439,11 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     marginBottom: 2,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+  },
   refreshButton: {
     width: 40,
     height: 40,
@@ -266,12 +454,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  settingsButton: {
+    // inherits refreshButton styles
+  },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: Spacing[4],
     paddingBottom: Spacing[20],
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    marginBottom: Spacing[4],
   },
   metricsRow: {
     flexDirection: 'row',
@@ -299,22 +494,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  avgText: {
-    marginLeft: Spacing[3],
+  avgIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primaryGlow,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing[3],
   },
+  avgText: {},
   sectionHeader: {
     marginBottom: Spacing[3],
   },
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -Spacing[2],
+    gap: Spacing[3],
     marginBottom: Spacing[4],
   },
   typeCard: {
-    width: '50%',
-    paddingHorizontal: Spacing[2],
-    marginBottom: Spacing[3],
+    width: '47%',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing[4],
+    ...Shadows.sm,
   },
   typeIconWrapper: {
     width: 40,
@@ -323,20 +529,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing[2],
-  },
-  typeCount: {
-    marginBottom: 2,
-  },
-  typeBar: {
-    height: 3,
-    backgroundColor: Colors.border,
-    borderRadius: BorderRadius.full,
-    marginTop: Spacing[2],
-    overflow: 'hidden',
-  },
-  typeBarFill: {
-    height: '100%',
-    borderRadius: BorderRadius.full,
   },
   topList: {
     marginBottom: Spacing[4],
@@ -362,9 +554,9 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textTertiary,
   },
-  rankFirst: {
-    color: Colors.warning,
-  },
+  rankFirst: { color: Colors.warning },
+  rankSecond: { color: Colors.textSecondary },
+  rankThird: { color: '#CD7F32' },
   topIconWrapper: {
     width: 36,
     height: 36,
@@ -375,19 +567,6 @@ const styles = StyleSheet.create({
   },
   topInfo: {
     flex: 1,
-  },
-  topBarWrapper: {
-    marginTop: Spacing[2],
-  },
-  topBarBg: {
-    height: 3,
-    backgroundColor: Colors.border,
-    borderRadius: BorderRadius.full,
-    overflow: 'hidden',
-  },
-  topBarFill: {
-    height: '100%',
-    borderRadius: BorderRadius.full,
   },
   topCountBadge: {
     alignItems: 'center',
@@ -408,24 +587,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     color: Colors.textTertiary,
     lineHeight: 14,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: Spacing[16],
-  },
-  emptyIconWrapper: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.backgroundTertiary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing[4],
-  },
-  emptyTitle: {
-    marginBottom: Spacing[2],
   },
   bottomSpacer: {
     height: Spacing[4],

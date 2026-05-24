@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius } from '../../theme';
 import { Text } from './Text';
@@ -14,8 +14,21 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ icon, title, description, actionLabel, onAction }: EmptyStateProps) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(16)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 380, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 380, useNativeDriver: true }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
+
   return (
-    <View style={styles.container}>
+    <Animated.View
+      style={[styles.container, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      accessibilityLiveRegion="polite"
+    >
       <View style={styles.iconWrapper}>
         <Ionicons name={icon} size={48} color={Colors.textTertiary} />
       </View>
@@ -36,7 +49,7 @@ export function EmptyState({ icon, title, description, actionLabel, onAction }: 
           style={styles.action}
         />
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 

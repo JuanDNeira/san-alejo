@@ -32,6 +32,9 @@ export function TypeSelector({ value, onChange }: TypeSelectorProps) {
               styles.typeItem,
               isSelected && styles.typeItemSelected,
             ]}
+            accessibilityRole="radio"
+            accessibilityLabel={CONTAINER_TYPE_LABELS[type]}
+            accessibilityState={{ selected: isSelected }}
           >
             <View
               style={[

@@ -55,6 +55,9 @@ export function Button({
         disabled={isDisabled}
         activeOpacity={0.8}
         style={[styles.base, sizeStyle, isDisabled && styles.disabled, style]}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: isDisabled, busy: loading }}
       >
         <LinearGradient
           colors={Colors.gradients.primary}
@@ -101,6 +104,9 @@ export function Button({
       disabled={isDisabled}
       activeOpacity={0.7}
       style={[styles.base, sizeStyle, variantStyle, isDisabled && styles.disabled, style]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
     >
       {loading ? (
         <ActivityIndicator color={textColor} size="small" />

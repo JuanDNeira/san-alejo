@@ -30,6 +30,9 @@ export function ColorPicker({ value, onChange, colors = DEFAULT_COLORS }: ColorP
               { backgroundColor: color },
               isSelected && styles.swatchSelected,
             ]}
+            accessibilityRole="radio"
+            accessibilityLabel={`Color ${color}`}
+            accessibilityState={{ selected: isSelected }}
           >
             {isSelected && (
               <Ionicons name="checkmark" size={16} color="#FFFFFF" />

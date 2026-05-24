@@ -12,6 +12,7 @@ interface FloatingActionButtonProps {
   size?: number;
   bottom?: number;
   right?: number;
+  accessibilityLabel?: string;
 }
 
 export function FloatingActionButton({
@@ -21,6 +22,7 @@ export function FloatingActionButton({
   size = 60,
   bottom = 90,
   right = 20,
+  accessibilityLabel = 'Crear nuevo',
 }: FloatingActionButtonProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -61,6 +63,8 @@ export function FloatingActionButton({
         onPressOut={handlePressOut}
         activeOpacity={1}
         style={[styles.button, { width: size, height: size, borderRadius: size / 2 }]}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
       >
         <LinearGradient
           colors={gradient}

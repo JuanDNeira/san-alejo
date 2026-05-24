@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Text,
   Button,
@@ -19,15 +20,15 @@ import {
   TypeSelector,
   ColorPicker,
   TagBadge,
+  ImagePickerButton,
 } from '../components/ui';
 import { Colors, Spacing, BorderRadius } from '../theme';
 import { useContainerStore } from '../store/containerStore';
 import { TagRepository } from '../database/repositories/TagRepository';
 import { LocationRepository } from '../database/repositories/LocationRepository';
-import { useAppNavigation } from '../navigation/RootNavigator';
+import { useAppNavigation } from '../navigation/NavigationContext';
 import { validateContainerName } from '../utils/validation';
 import type { ContainerType } from '../types/common';
-import { CONTAINER_TYPE_ICONS } from '../types/common';
 import type { Tag } from '../types/Tag';
 import type { Location } from '../types/Location';
 
@@ -36,6 +37,7 @@ interface FormState {
   description: string;
   type: ContainerType;
   color_tag: string | undefined;
+  cover_image_uri: string | undefined;
   location_id: string | undefined;
   selectedTagIds: string[];
 }
@@ -47,12 +49,14 @@ interface FormErrors {
 export default function CreateContainerScreen() {
   const { goBack, params } = useAppNavigation();
   const { createContainer, isLoading } = useContainerStore();
+  const insets = useSafeAreaInsets();
 
   const [form, setForm] = useState<FormState>({
     name: '',
     description: '',
     type: 'box',
     color_tag: Colors.containerTags[0],
+    cover_image_uri: undefined,
     location_id: params?.locationId,
     selectedTagIds: [],
   });
@@ -98,6 +102,7 @@ export default function CreateContainerScreen() {
         description: form.description.trim() || undefined,
         type: form.type,
         color_tag: form.color_tag,
+        cover_image_uri: form.cover_image_uri,
         location_id: form.location_id,
         parent_container_id: params?.parentContainerId,
       });
@@ -124,8 +129,14 @@ export default function CreateContainerScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.closeButton} onPress={goBack} activeOpacity={0.7}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, Spacing[4]) }]}>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={goBack}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar"
+        >
           <Ionicons name="close" size={20} color={Colors.textSecondary} />
         </TouchableOpacity>
         <Text variant="headingSmall" color={Colors.textPrimary}>
@@ -142,13 +153,13 @@ export default function CreateContainerScreen() {
           end={{ x: 1, y: 1 }}
           style={styles.previewGradient}
         >
-          <View style={[styles.previewIcon, { backgroundColor: `${selectedColor}22`, borderColor: `${selectedColor}55` }]}>
-            <Ionicons
-              name={CONTAINER_TYPE_ICONS[form.type] as React.ComponentProps<typeof Ionicons>['name']}
-              size={32}
-              color={selectedColor}
-            />
-          </View>
+          <ImagePickerButton
+            uri={form.cover_image_uri}
+            onImageSelected={(uri) => updateField('cover_image_uri', uri)}
+            onImageRemoved={() => updateField('cover_image_uri', undefined)}
+            size="md"
+            label="Foto"
+          />
           <View style={styles.previewInfo}>
             <Text variant="headingMedium" color={Colors.textPrimary} numberOfLines={1}>
               {form.name || 'Sin nombre'}
@@ -158,6 +169,7 @@ export default function CreateContainerScreen() {
                 {form.description}
               </Text>
             ) : null}
+            <View style={[styles.previewColorDot, { backgroundColor: selectedColor }]} />
           </View>
         </LinearGradient>
       </View>
@@ -295,14 +307,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing[4],
-    paddingTop: Spacing[12],
     paddingBottom: Spacing[4],
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   closeButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.surface,
     borderWidth: 1,
@@ -311,7 +322,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerRight: {
-    width: 36,
+    width: 44,
   },
   previewBanner: {
     overflow: 'hidden',
@@ -322,17 +333,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[5],
     paddingVertical: Spacing[4],
   },
-  previewIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing[4],
-  },
   previewInfo: {
     flex: 1,
+    marginLeft: Spacing[4],
+  },
+  previewColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: BorderRadius.full,
+    marginTop: Spacing[2],
   },
   scroll: {
     flex: 1,

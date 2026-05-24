@@ -7,6 +7,7 @@ export interface Item {
   quantity: number;
   container_id: string;
   cover_image_uri?: string;
+  is_favorite: boolean;
   created_at: UnixTimestamp;
   updated_at: UnixTimestamp;
 }
@@ -25,4 +26,5 @@ export interface UpdateItemInput {
   description?: string;
   quantity?: number;
   cover_image_uri?: string;
+  is_favorite?: boolean;
 }

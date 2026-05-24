@@ -21,7 +21,7 @@ function rowToContainer(row: Record<string, unknown>): Container {
     parent_container_id: (row.parent_container_id as string) ?? undefined,
     cover_image_uri: (row.cover_image_uri as string) ?? undefined,
     color_tag: (row.color_tag as string) ?? undefined,
-    // Coerce to number — expo-sqlite may return INTEGER columns as strings
+    is_favorite: Number(row.is_favorite ?? 0) === 1,
     created_at: Number(row.created_at),
     updated_at: Number(row.updated_at),
     last_accessed_at: row.last_accessed_at != null ? Number(row.last_accessed_at) : undefined,
@@ -41,7 +41,27 @@ export const ContainerRepository = {
   async findRoots(): Promise<Container[]> {
     const db = getDb();
     const rows = await db.getAllAsync<Record<string, unknown>>(
-      'SELECT * FROM containers WHERE parent_container_id IS NULL ORDER BY updated_at DESC;'
+      `SELECT c.*,
+         (SELECT COALESCE(SUM(i.quantity), 0)
+          FROM items i
+          WHERE i.container_id = c.id) AS item_count
+       FROM containers c
+       WHERE c.parent_container_id IS NULL
+       ORDER BY c.is_favorite DESC, c.updated_at DESC;`
+    );
+    return rows.map(rowToContainer);
+  },
+
+  async findFavorites(): Promise<Container[]> {
+    const db = getDb();
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      `SELECT c.*,
+         (SELECT COALESCE(SUM(i.quantity), 0)
+          FROM items i
+          WHERE i.container_id = c.id) AS item_count
+       FROM containers c
+       WHERE c.is_favorite = 1
+       ORDER BY c.updated_at DESC;`
     );
     return rows.map(rowToContainer);
   },
@@ -77,7 +97,6 @@ export const ContainerRepository = {
     if (tagIds.length === 0) return [];
     const db = getDb();
     const placeholders = tagIds.map(() => '?').join(',');
-    // AND semantics: container must have ALL selected tags
     const rows = await db.getAllAsync<Record<string, unknown>>(
       `SELECT c.* FROM containers c
        WHERE c.parent_container_id IS NULL
@@ -130,6 +149,7 @@ export const ContainerRepository = {
     if (data.parent_container_id !== undefined) { fields.push('parent_container_id = ?'); values.push(data.parent_container_id); }
     if (data.cover_image_uri !== undefined) { fields.push('cover_image_uri = ?'); values.push(data.cover_image_uri); }
     if (data.color_tag !== undefined) { fields.push('color_tag = ?'); values.push(data.color_tag); }
+    if (data.is_favorite !== undefined) { fields.push('is_favorite = ?'); values.push(data.is_favorite ? 1 : 0); }
 
     if (fields.length === 0) return;
     fields.push('updated_at = ?');
@@ -142,9 +162,22 @@ export const ContainerRepository = {
     );
   },
 
+  async toggleFavorite(id: string): Promise<boolean> {
+    const db = getDb();
+    const row = await db.getFirstAsync<{ is_favorite: number }>(
+      'SELECT is_favorite FROM containers WHERE id = ?;',
+      [id]
+    );
+    const newValue = row?.is_favorite === 1 ? 0 : 1;
+    await db.runAsync(
+      'UPDATE containers SET is_favorite = ?, updated_at = ? WHERE id = ?;',
+      [newValue, nowTimestamp(), id]
+    );
+    return newValue === 1;
+  },
+
   async delete(id: string): Promise<void> {
     const db = getDb();
-    // Cascading delete handled by FK ON DELETE CASCADE
     await db.runAsync('DELETE FROM containers WHERE id = ?;', [id]);
   },
 
@@ -232,5 +265,33 @@ export const ContainerRepository = {
       container: rowToContainer(row),
       count: row.item_count as number,
     }));
+  },
+
+  async getStorageInfo(): Promise<{ containerCount: number; itemCount: number; tagCount: number; locationCount: number }> {
+    const db = getDb();
+    const [c, i, t, l] = await Promise.all([
+      db.getFirstAsync<{ n: number }>('SELECT COUNT(*) as n FROM containers;'),
+      db.getFirstAsync<{ n: number }>('SELECT COUNT(*) as n FROM items;'),
+      db.getFirstAsync<{ n: number }>('SELECT COUNT(*) as n FROM tags;'),
+      db.getFirstAsync<{ n: number }>('SELECT COUNT(*) as n FROM locations;'),
+    ]);
+    return {
+      containerCount: Number(c?.n ?? 0),
+      itemCount: Number(i?.n ?? 0),
+      tagCount: Number(t?.n ?? 0),
+      locationCount: Number(l?.n ?? 0),
+    };
+  },
+
+  async deleteAllData(): Promise<void> {
+    const db = getDb();
+    await db.withTransactionAsync(async () => {
+      await db.execAsync('DELETE FROM item_tags;');
+      await db.execAsync('DELETE FROM container_tags;');
+      await db.execAsync('DELETE FROM items;');
+      await db.execAsync('DELETE FROM containers;');
+      await db.execAsync('DELETE FROM tags;');
+      // Keep locations and seed location intact
+    });
   },
 };

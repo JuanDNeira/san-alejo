@@ -14,6 +14,15 @@ export const FontFamily = {
   bold: 'Inter_700Bold',
 } as const;
 
+// LineHeight values — exported for direct use when needed
+export const LineHeight = {
+  tight: 16,
+  snug: 20,
+  normal: 24,
+  relaxed: 28,
+  loose: 32,
+} as const;
+
 export const FontSize = {
   xs: 11,
   sm: 13,

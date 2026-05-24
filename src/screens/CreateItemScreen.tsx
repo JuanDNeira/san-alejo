@@ -11,17 +11,19 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Text,
   Button,
   PremiumInput,
   SectionHeader,
   TagBadge,
+  ImagePickerButton,
 } from '../components/ui';
 import { Colors, Spacing, BorderRadius } from '../theme';
 import { useItemStore } from '../store/itemStore';
 import { TagRepository } from '../database/repositories/TagRepository';
-import { useAppNavigation } from '../navigation/RootNavigator';
+import { useAppNavigation } from '../navigation/NavigationContext';
 import { validateItemName, validateQuantity } from '../utils/validation';
 import type { Tag } from '../types/Tag';
 
@@ -29,6 +31,7 @@ interface FormState {
   name: string;
   description: string;
   quantity: string;
+  cover_image_uri: string | undefined;
   selectedTagIds: string[];
 }
 
@@ -41,11 +44,13 @@ export default function CreateItemScreen() {
   const { goBack, params } = useAppNavigation();
   const containerId = params?.containerId ?? '';
   const { createItem, isLoading } = useItemStore();
+  const insets = useSafeAreaInsets();
 
   const [form, setForm] = useState<FormState>({
     name: '',
     description: '',
     quantity: '1',
+    cover_image_uri: undefined,
     selectedTagIds: [],
   });
   const [errors, setErrors] = useState<FormErrors>({});
@@ -107,6 +112,7 @@ export default function CreateItemScreen() {
         description: form.description.trim() || undefined,
         quantity: parseInt(form.quantity, 10) || 1,
         container_id: containerId,
+        cover_image_uri: form.cover_image_uri,
         tag_ids: form.selectedTagIds.length > 0 ? form.selectedTagIds : undefined,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -122,8 +128,14 @@ export default function CreateItemScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.closeButton} onPress={goBack} activeOpacity={0.7}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, Spacing[4]) }]}>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={goBack}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar"
+        >
           <Ionicons name="close" size={20} color={Colors.textSecondary} />
         </TouchableOpacity>
         <Text variant="headingSmall" color={Colors.textPrimary}>
@@ -139,9 +151,13 @@ export default function CreateItemScreen() {
         end={{ x: 1, y: 1 }}
         style={styles.previewBanner}
       >
-        <View style={styles.previewIconWrapper}>
-          <Ionicons name="pricetag" size={28} color={Colors.accent} />
-        </View>
+        <ImagePickerButton
+          uri={form.cover_image_uri}
+          onImageSelected={(uri) => updateField('cover_image_uri', uri)}
+          onImageRemoved={() => updateField('cover_image_uri', undefined)}
+          size="md"
+          label="Foto"
+        />
         <View style={styles.previewInfo}>
           <Text variant="headingMedium" color={Colors.textPrimary} numberOfLines={1}>
             {form.name || 'Sin nombre'}
@@ -188,6 +204,8 @@ export default function CreateItemScreen() {
             style={styles.quantityButton}
             onPress={() => adjustQuantity(-1)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Reducir cantidad"
           >
             <Ionicons name="remove" size={20} color={Colors.textPrimary} />
           </TouchableOpacity>
@@ -208,6 +226,8 @@ export default function CreateItemScreen() {
             style={[styles.quantityButton, styles.quantityButtonAdd]}
             onPress={() => adjustQuantity(1)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Aumentar cantidad"
           >
             <Ionicons name="add" size={20} color={Colors.textPrimary} />
           </TouchableOpacity>
@@ -265,14 +285,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: Spacing[4],
-    paddingTop: Spacing[12],
     paddingBottom: Spacing[4],
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
   closeButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.surface,
     borderWidth: 1,
@@ -281,7 +300,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerRight: {
-    width: 36,
+    width: 44,
   },
   previewBanner: {
     flexDirection: 'row',
@@ -302,6 +321,7 @@ const styles = StyleSheet.create({
   },
   previewInfo: {
     flex: 1,
+    marginLeft: Spacing[4],
   },
   scroll: {
     flex: 1,

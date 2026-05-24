@@ -9,6 +9,7 @@ export interface Container {
   parent_container_id?: string;
   cover_image_uri?: string;
   color_tag?: string;
+  is_favorite: boolean;
   created_at: UnixTimestamp;
   updated_at: UnixTimestamp;
   last_accessed_at?: UnixTimestamp;
@@ -34,4 +35,5 @@ export interface UpdateContainerInput {
   parent_container_id?: string;
   cover_image_uri?: string;
   color_tag?: string;
+  is_favorite?: boolean;
 }

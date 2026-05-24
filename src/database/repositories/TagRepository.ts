@@ -140,4 +140,20 @@ export const TagRepository = {
       [itemId, tagId]
     );
   },
+
+  async getUsageCounts(): Promise<Record<string, number>> {
+    const db = getDb();
+    const rows = await db.getAllAsync<{ tag_id: string; cnt: number }>(
+      `SELECT tag_id, COUNT(*) as cnt FROM (
+         SELECT tag_id FROM container_tags
+         UNION ALL
+         SELECT tag_id FROM item_tags
+       ) GROUP BY tag_id;`
+    );
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      result[row.tag_id] = row.cnt;
+    }
+    return result;
+  },
 };

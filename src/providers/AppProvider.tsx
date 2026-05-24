@@ -12,6 +12,7 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { initializeDb } from '../database/db';
 import { Colors } from '../theme/colors';
+import { useUIStore } from '../store/uiStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -27,15 +28,19 @@ export default function AppProvider({ children }: AppProviderProps) {
     Inter_600SemiBold,
     Inter_700Bold,
   });
+  const loadTheme = useUIStore((s) => s.loadTheme);
 
   useEffect(() => {
-    initializeDb()
+    Promise.all([
+      initializeDb(),
+      loadTheme(),
+    ])
       .then(() => setDbReady(true))
       .catch((err) => {
-        console.error('DB init failed:', err);
-        setDbReady(true); // still proceed so app doesn't hang
+        console.error('App init failed:', err);
+        setDbReady(true);
       });
-  }, []);
+  }, [loadTheme]);
 
   useEffect(() => {
     if ((fontsLoaded || fontError) && dbReady) {

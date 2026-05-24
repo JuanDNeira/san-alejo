@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, BorderRadius, Spacing } from '../../theme';
+import { Colors, BorderRadius, Spacing, Shadows } from '../../theme';
 import { Text } from './Text';
 
 interface StatCardProps {
@@ -23,7 +23,11 @@ export function StatCard({
   subtitle,
 }: StatCardProps) {
   return (
-    <View style={styles.card}>
+    <View
+      style={styles.card}
+      accessibilityRole="text"
+      accessibilityLabel={`${label}: ${value}${subtitle ? `, ${subtitle}` : ''}`}
+    >
       <LinearGradient
         colors={gradient}
         start={{ x: 0, y: 0 }}
@@ -56,7 +60,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: BorderRadius.xl,
     overflow: 'hidden',
-    elevation: 8,
+    ...Shadows.lg,
   },
   gradient: {
     padding: Spacing[5],
