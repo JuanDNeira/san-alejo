@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import {
 import { Colors, Spacing, BorderRadius, FontFamily, FontSize } from '../theme';
 import { useItemStore } from '../store/itemStore';
 import { TagRepository } from '../database/repositories/TagRepository';
+import { ItemRepository } from '../database/repositories/ItemRepository';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { validateItemName, validateQuantity } from '../utils/validation';
 import type { Tag } from '../types/Tag';
@@ -42,10 +44,11 @@ interface FormErrors {
   quantity?: string;
 }
 
-export default function CreateItemScreen() {
+export default function EditItemScreen() {
   const { goBack, params } = useAppNavigation();
+  const itemId = params?.itemId ?? '';
   const containerId = params?.containerId ?? '';
-  const { createItem, isLoading } = useItemStore();
+  const { updateItem, deleteItem } = useItemStore();
   const insets = useSafeAreaInsets();
 
   const [form, setForm] = useState<FormState>({
@@ -57,12 +60,33 @@ export default function CreateItemScreen() {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [tags, setTags] = useState<Tag[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [ecoExpanded, setEcoExpanded] = useState(false);
   const [selectedEcoAction, setSelectedEcoAction] = useState<EcoAction | undefined>();
 
   useEffect(() => {
-    TagRepository.findAll().then(setTags).catch(() => {});
-  }, []);
+    if (!itemId) return;
+    Promise.all([
+      ItemRepository.findById(itemId),
+      TagRepository.findAll(),
+      TagRepository.findByItemId(itemId),
+    ]).then(([item, allTags, itemTags]) => {
+      setTags(allTags);
+      if (item) {
+        setForm({
+          name: item.name,
+          description: item.description ?? '',
+          quantity: String(item.quantity),
+          cover_image_uri: item.cover_image_uri,
+          selectedTagIds: itemTags.map((t) => t.id),
+        });
+        setSelectedEcoAction(item.eco_action);
+      }
+      setIsInitialized(true);
+    }).catch(() => setIsInitialized(true));
+  }, [itemId]);
 
   const updateField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -110,23 +134,66 @@ export default function CreateItemScreen() {
 
   const handleSubmit = async () => {
     if (!validate()) return;
+    setIsSaving(true);
     try {
-      await createItem({
+      await updateItem(itemId, containerId, {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         quantity: parseInt(form.quantity, 10) || 1,
-        container_id: containerId,
         cover_image_uri: form.cover_image_uri,
-        tag_ids: form.selectedTagIds.length > 0 ? form.selectedTagIds : undefined,
-        eco_action: selectedEcoAction ?? null,
-        eco_status: selectedEcoAction ? 'pending' : null,
       });
+
+      // Sync tags
+      const currentTags = await TagRepository.findByItemId(itemId);
+      for (const tag of currentTags) {
+        await TagRepository.removeFromItem(itemId, tag.id);
+      }
+      for (const tagId of form.selectedTagIds) {
+        await TagRepository.assignToItem(itemId, tagId);
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       goBack();
     } catch {
-      Alert.alert('Error', 'No se pudo crear el ítem. Intenta de nuevo.');
+      Alert.alert('Error', 'No se pudo actualizar el ítem.');
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Eliminar ítem',
+      `¿Eliminar "${form.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              await deleteItem(itemId, containerId);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              goBack();
+            } catch {
+              Alert.alert('Error', 'No se pudo eliminar el ítem.');
+            } finally {
+              setIsDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (!isInitialized) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color={Colors.accent} size="large" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -145,9 +212,22 @@ export default function CreateItemScreen() {
           <Ionicons name="close" size={20} color={Colors.textSecondary} />
         </TouchableOpacity>
         <Text variant="headingSmall" color={Colors.textPrimary}>
-          Nuevo ítem
+          Editar ítem
         </Text>
-        <View style={styles.headerRight} />
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={handleDelete}
+          activeOpacity={0.7}
+          disabled={isDeleting}
+          accessibilityRole="button"
+          accessibilityLabel="Eliminar ítem"
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color={Colors.error} />
+          ) : (
+            <Ionicons name="trash-outline" size={18} color={Colors.error} />
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Preview banner */}
@@ -190,7 +270,6 @@ export default function CreateItemScreen() {
           icon="pricetag-outline"
           maxLength={100}
           returnKeyType="next"
-          autoFocus
         />
 
         <PremiumInput
@@ -322,11 +401,11 @@ export default function CreateItemScreen() {
           style={styles.cancelButton}
         />
         <Button
-          label="Agregar ítem"
+          label="Guardar cambios"
           onPress={handleSubmit}
           variant="primary"
           size="md"
-          loading={isLoading}
+          loading={isSaving}
           style={styles.submitButton}
         />
       </View>
@@ -338,6 +417,12 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loading: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -358,25 +443,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerRight: {
+  deleteButton: {
     width: 44,
+    height: 44,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.errorLight,
+    borderWidth: 1,
+    borderColor: Colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   previewBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing[5],
     paddingVertical: Spacing[4],
-  },
-  previewIconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: `${Colors.accent}22`,
-    borderWidth: 1.5,
-    borderColor: `${Colors.accent}55`,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing[4],
   },
   previewInfo: {
     flex: 1,
